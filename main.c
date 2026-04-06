@@ -143,7 +143,9 @@ void rstack_delete(rstack_t *rs){
   //  
   // assume i can differ connection
   // i have cycled stacks, if i will iterate through(precisely through every node) them
-  // if any of them wont have root connection -> free everything. bfs? 
+  // if any of them wont have root connection -> free everything. bfs?(implement custom list) 
+
+
 
   return;
 }
@@ -168,8 +170,6 @@ void rstack_pop(rstack_t *rs){
   node_t *next_node = front->next; // if front->next == NULL its doesnt matter
   rs->front = next_node;
 }
-
-
 
 int main(){
   //rstack_push_value(rs1, 5);
