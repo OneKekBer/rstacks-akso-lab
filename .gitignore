@@ -1,0 +1,5 @@
+*.exe
+/c
+/tests
+*.o
+*.zip
