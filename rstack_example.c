@@ -93,16 +93,16 @@ static int two(void) {
   ASSERT_RESULT(rstack_front(rs2), false);
   rstack_delete(rs1);
   rstack_delete(rs2);
-
   rs2 = rstack_new();
   assert(rs2);
-
+  
   CHECK_IF_NO_ERROR(rstack_push_value(rs2, 4));
   CHECK_IF_NO_ERROR(rstack_push_value(rs2, 5));
   CHECK_IF_NO_ERROR(rstack_push_rstack(rs2, rs2));
   ASSERT(rstack_empty(rs2) == false);
   ASSERT_RESULT(rstack_front(rs2), true, 5);
   CHECK_IF_NO_ERROR(rstack_push_value(rs2, 6));
+  printf("git");
   CHECK_IF_NO_ERROR(rstack_write("file_two.out", rs2));
   ASSERT(rstack_empty(rs2) == false);
   ASSERT_RESULT(rstack_front(rs2), true, 6);
@@ -141,7 +141,7 @@ static int three(void) {
 }
 
 static int four(void) {
-  rstack_t *rs4 = rstack_read("file_four.in");
+  rstack_t *rs4 = rstack_read("./c/file_four.in");
   assert(rs4);
 
   CHECK_IF_NO_ERROR(rstack_write("file_four.out", rs4));
@@ -185,9 +185,9 @@ static unsigned long alloc_fail_test(void) {
   rstack_t *rs;
 
   errno = 0;
-  if ((rs = rstack_new()) != nullptr)
+  if ((rs = rstack_new()) != NULL)
     visited |= V(1, 0);
-  else if (errno == ENOMEM && (rs = rstack_new()) != nullptr)
+  else if (errno == ENOMEM && (rs = rstack_new()) != NULL)
     visited |= V(2, 0);
   else
     return visited |= V(4, 0); // To nie powinno się wykonać.

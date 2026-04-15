@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <stdbool.h>
 // Ten plik musi kompilowany z opcjami -std=gnu23 i -fPIC,
 // a linkowany z opcjami -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc
 // -Wl,--wrap=reallocarray -Wl,--wrap=free -Wl,--wrap=strdup -Wl,--wrap=strndup.

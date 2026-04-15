@@ -1,5 +1,13 @@
-*.exe
 /c
 /tests
+/akso-z1-testy
+/custom_tests
+memory_test.c
+memory_test.h
+rstack_example.c
+
+
+*.exe
 *.o
+*.out
 *.zip
