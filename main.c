@@ -5,30 +5,30 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-// Każde odłożenie stosu na stos zwiększa o jeden wartość licznika referencji odkładanego
-// stosu Każde zdjęcie stosu ze stosu zmniejsza o jeden wartość licznika referencji
-// zdejmowanego stosu Kasowanie stosu polega na zmniejszeniu o jeden wartości licznika
-// referencji
-
 // TODO: make linter, or some code formatter
+
+//atexit added,
 
 list_t *global_rstacks_list = NULL; // stores all stacks connected to root 
 
-void rstack_list_free_all(list_t *list){
-		node_t *current_node = list->head;
-		while(current_node != NULL){ 
-			node_t *next_node = current_node->next;
-			free(current_node);
-			current_node = next_node;
-		}
+void rstack_list_free_all(){
+	list_t *list = global_rstacks_list;
+	if(list == NULL) return;
+	node_t *current_node = list->head;
+	while(current_node != NULL){ 
+		node_t *next_node = current_node->next;
+		rstack_free(current_node->data.nested_stack);
+		free(current_node);
+		current_node = next_node;
+	}
 
-		free(list);
+	free(list);
+	global_rstacks_list = NULL;
 }
 
-// TODO:delete all stacks not only list
-__attribute__((destructor))
-void auto_cleanup(void) {
-    rstack_list_free_all(global_rstacks_list);	
+__attribute__((constructor))
+static void init(void) {
+    atexit(rstack_list_free_all);
 }
 
 int init_global_rstacks_list() {
@@ -64,33 +64,50 @@ node_t *node_new() {
 rstack_t *rstack_new() {
 	int res = init_global_rstacks_list();
 	
-	rstack_t *rs = (rstack_t *)malloc(sizeof(rstack_t));
-	if (rs == NULL) {
-		if(res == 0) rstack_list_free_all(global_rstacks_list);
+	rstack_t *new_rstack = (rstack_t *)malloc(sizeof(rstack_t));
+	if (new_rstack == NULL) {
+		if(res == 0)
+			rstack_list_free_all();
+		
 		errno = ENOMEM;
 		return NULL;
 	}
 
-  rs->is_marked = false;
-	rs->front = NULL;
-	rs->general_counter = 1;
-	rs->inner_counter = 0;
+  new_rstack->is_marked = false;
+	new_rstack->front = NULL;
+	new_rstack->general_counter = 1;
+	new_rstack->inner_counter = 0;
 
 	//i could do this better, TODO: make it in different function
-	if(global_rstacks_list->head == NULL){
-		node_t *node = node_new(); // TODO: error handling and change name like in else
-		node->data.nested_stack = rs;
+	if(global_rstacks_list == NULL){
+		free(new_rstack);
+		errno = ENOMEM;
+		return NULL;
+	}
+	
+	node_t *new_node = node_new(); // TODO: error handling and change name like in else
+	if(new_node == NULL){
+		if(res == 0)
+			rstack_list_free_all();
+			
+		free(new_rstack);
+		errno = ENOMEM;
+		return NULL;
+	}
 
-		global_rstacks_list->head = node;
-		global_rstacks_list->tail = node;
+	if(global_rstacks_list->head == NULL){
+		new_node->data.nested_stack = new_rstack;
+
+		global_rstacks_list->head = new_node;
+		global_rstacks_list->tail = new_node;
 	}else{
-		node_t *new_node = node_new();
-		new_node->data.nested_stack = rs;
+		new_node->data.nested_stack = new_rstack;
+		
 		global_rstacks_list->tail->next = new_node;
 		global_rstacks_list->tail = new_node; // edited
 	}
 
-	return rs;
+	return new_rstack;
 }
 
 void rstack_read_fail(rstack_t *rs, FILE *f, char *buffer){
@@ -119,22 +136,22 @@ rstack_t *rstack_read(char const *path) {
 	size_t size = 0;
 
 	while (getline(&buffer, &size, file) != -1){
-		char *end = NULL;
-		char *p = buffer; // TODO: rename
+		char *number_end = NULL;
+		char *number_start = buffer;
 		
 		uint64_t input_number = 0;
 		while(true){
 			errno = 0;
-			input_number = strtoull(p, &end, 10);
+			input_number = strtoull(number_start, &number_end, 10);
 			if (errno == ERANGE){
 				rstack_read_fail(current_rstack, file, buffer);
 				return NULL;
 			}
 
-			if(end == p) {
-				while(isspace(*p)) p++;
+			if(number_end == number_start) {
+				while(isspace(*number_start)) number_start++;
 
-				if(*p == '\n' || *p == '\0' || isspace(*p)) break; // TODO: wyjebac isspace
+				if(*number_start == '\n' || *number_start == '\0' || isspace(*number_start)) break; // TODO: wyjebac isspace
 				rstack_read_fail(current_rstack, file, buffer);
 				errno = EINVAL;
 				return NULL;
@@ -146,7 +163,7 @@ rstack_t *rstack_read(char const *path) {
 				return NULL;
 			}
 						
-			p = end;
+			number_start = number_end;
 		}
 	}
 	
@@ -175,6 +192,14 @@ rstack_t *rstack_read(char const *path) {
 // 	rs->is_marked = false;
 // 	return false;
 // }
+
+void check_is_global_list_empty_and_delete(){
+	if(global_rstacks_list == NULL) return;
+	if(global_rstacks_list->head == NULL){
+		free(global_rstacks_list);
+		global_rstacks_list = NULL;
+	}
+}
 
 typedef enum {
     WRITE_SUCCESS = 0, // Всё отлично
@@ -453,7 +478,6 @@ void list_sweep_phase(list_t *list){
 	node_t *prev_node = NULL; // TODO: assign this node
 	node_t *next_node = NULL;
 
-
 	while(current_node != NULL){
 		rstack_t *current_rstack = current_node->data.nested_stack;
 		next_node = current_node->next;
@@ -492,6 +516,7 @@ void rstack_delete(rstack_t *rs) {
 	list_mark_phase(global_rstacks_list);	
 	list_sweep_phase_update_counters(global_rstacks_list);
 	list_sweep_phase(global_rstacks_list);
+	check_is_global_list_empty_and_delete();
 }
 
 void rstack_pop(rstack_t *rs) {
@@ -518,6 +543,7 @@ void rstack_pop(rstack_t *rs) {
 		list_mark_phase(global_rstacks_list);
 		list_sweep_phase_update_counters(global_rstacks_list);
 		list_sweep_phase(global_rstacks_list);
+		check_is_global_list_empty_and_delete();
 	}
 
 	free(front_node);
