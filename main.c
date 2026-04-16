@@ -9,11 +9,46 @@
 
 static list_t *global_rstacks_list = NULL;
 
+#define RES_SUCCESS 0
+#define RES_FAIL -1
+
 // TODO: make linter, or some code formatter
+
+void rstack_list_free_all(){;
+	if(global_rstacks_list == NULL) return;
+	
+	list_node_t *current_node = global_rstacks_list->head;
+	while(current_node != NULL){ 
+		list_node_t *next_node = current_node->next;
+		rstack_free(current_node->rstack);
+		free(current_node);
+		current_node = next_node;
+	}
+
+	free(global_rstacks_list);
+}
 
 __attribute__((constructor))
 static void init(void) {
   atexit(rstack_list_free_all);
+}
+
+//isstack and isvalue are same, but I think it will be better than write smth like !isstack();    
+int isstack(node_t *node){
+	return node->nested_stack != NULL; 
+}
+
+int isvalue(node_t *node){
+	return node->nested_stack == NULL;
+}
+
+result_t result_new(bool is_success, uint64_t value){
+	result_t result;
+
+	result.flag = is_success;
+	result.value = value;
+
+	return result;
 }
 
 void check_is_global_list_empty_and_delete(){
@@ -25,18 +60,18 @@ void check_is_global_list_empty_and_delete(){
 }
 
 int init_global_rstacks_list() {
-	if(global_rstacks_list != NULL) return -1;
+	if(global_rstacks_list != NULL) return RES_FAIL;
 	global_rstacks_list = (list_t*)malloc((size_t)sizeof(list_t));
 
-	if(global_rstacks_list == NULL) { // TOTAL UNLUCK
+	if(global_rstacks_list == NULL) {
 		errno = ENOMEM;
-		return -1;
+		return RES_FAIL;
 	}
 
 	global_rstacks_list->head = NULL;
 	global_rstacks_list->tail = NULL;
 	
-	return 0;
+	return RES_SUCCESS;
 }
 
 node_t *node_new() {
@@ -46,10 +81,9 @@ node_t *node_new() {
 		return NULL;
 	}
 
-	node->data.nested_stack = NULL;
-	node->data.value = 0;
+	node->nested_stack = NULL;
+	node->value = 0;
 	node->next = NULL; 
-	node->type = 0;
 
 	return node;
 }
@@ -59,7 +93,7 @@ rstack_t *rstack_new() {
 	
 	rstack_t *new_rstack = (rstack_t *)malloc(sizeof(rstack_t));
 	if (new_rstack == NULL) {
-		if(res == 0) check_is_global_list_empty_and_delete();
+		if(res == RES_SUCCESS) check_is_global_list_empty_and_delete();
 		errno = ENOMEM;
 		return NULL;
 	}
@@ -77,7 +111,7 @@ rstack_t *rstack_new() {
 	
 	list_node_t *new_list_node = list_node_new(new_rstack);
 	if(new_list_node == NULL){
-		if(res == 0) check_is_global_list_empty_and_delete();
+		if(res == RES_SUCCESS) check_is_global_list_empty_and_delete();
 		free(new_rstack);
 		errno = ENOMEM;
 		return NULL;
@@ -101,10 +135,8 @@ void rstack_read_fail(rstack_t *rs, FILE *f, char *buffer){
 }
 
 rstack_t *rstack_read(char const *path) {
-	//TODO: is fopen through errno if path is unvavaible
 	FILE *file = fopen(path, "r");
 	if (file == NULL) {
-		errno = ENOMEM; // TODO: check blyat
 		return NULL;
 	}
 
@@ -135,7 +167,7 @@ rstack_t *rstack_read(char const *path) {
 			if(number_end == number_start) {
 				while(isspace(*number_start)) number_start++;
 
-				if(*number_start == '\n' || *number_start == '\0' || isspace(*number_start)) break; // TODO: wyjebac isspace
+				if(*number_start == '\n' || *number_start == '\0') break;
 				rstack_read_fail(current_rstack, file, buffer);
 				errno = EINVAL;
 				return NULL;
@@ -155,71 +187,77 @@ rstack_t *rstack_read(char const *path) {
 	fclose(file);
 	return current_rstack;
 }
+// 0 - RES_SUCCESS, -1 - RES_FAIL
+int write_single_node_rec(node_t *node, FILE *file) {
+	if (node == NULL) return RES_SUCCESS;
 
-write_status_t write_single_node_rec(node_t *node, FILE *file) {
-	if (node == NULL) return WRITE_SUCCESS;
+	int is_ok = write_single_node_rec(node->next, file);
+	if (is_ok == RES_FAIL) return RES_FAIL;
 
-	write_status_t status = write_single_node_rec(node->next, file);
-	if (status != WRITE_SUCCESS) return status;
-
-	if (node->type == 1) {
-		rstack_t *nested_stack = node->data.nested_stack;
-		if (nested_stack->is_marked) return WRITE_CYCLE;
+	if (isstack(node)) {
+		rstack_t *nested_stack = node->nested_stack;
+		if (nested_stack->is_marked){
+			errno = ELOOP;
+			return RES_FAIL;
+		};
 		
 		nested_stack->is_marked = true;
-		status = write_single_node_rec(nested_stack->front, file);
+		is_ok = write_single_node_rec(nested_stack->front, file);
 		nested_stack->is_marked = false;
 		
-		if (status != WRITE_SUCCESS) return status;
+		if (is_ok == RES_FAIL) return RES_FAIL;
 	}
 
-	if (node->type == 0) {
-		if (fprintf(file, "%" PRIu64 "\n", node->data.value) < 0) { // TODO: check if buffered and whether it can cause problems
-			return WRITE_ERROR;
+	if (!isstack(node)) {
+		if (fprintf(file, "%" PRIu64 "\n", node->value) < 0) { // TODO: check if buffered and whether it can cause problems
+			return RES_FAIL;
 		}
 	}
 
-	return WRITE_SUCCESS;
+	return RES_SUCCESS;
 }
 
 int rstack_write(char const *path, rstack_t *rs) {
 	if (rs == NULL) {
 		errno = EINVAL;
-		return -1;
+		return RES_FAIL;
 	}
 
 	list_reset_marks(global_rstacks_list);
 
 	FILE *file = fopen(path, "w");
 	if (file == NULL) {
-		return -1;
+		return RES_FAIL;
 	}
 	
 	rs->is_marked = true;
-	write_status_t status = write_single_node_rec(rs->front, file);
+	int is_ok = write_single_node_rec(rs->front, file);
 
-	if (status == WRITE_ERROR) {
+	if (is_ok == RES_FAIL && errno != ELOOP) { // if loop was found its not an error
 		fclose(file);
 		remove(path); 
-		return -1;
+		return RES_FAIL;
 	}
 
-	if (fclose(file) != 0) {
-			return -1;
+	errno = 0; // reset errno
+
+	if (fclose(file) != RES_SUCCESS) {
+		remove(path); 
+		return RES_FAIL;
 	}
 
-	return 0;
+	return RES_SUCCESS;
 }
 
 void find_is_rstack_empty(node_t *node, bool *is_empty){
 	if(node == NULL) return;
 
-	if(node->type == 0){
+	if(isvalue(node)){
 		(*is_empty) = false;
 		return;
 	}
 	
-	rstack_t *child_stack = node->data.nested_stack;
+	rstack_t *child_stack = node->nested_stack;
 	if(!child_stack->is_marked){
 		child_stack->is_marked = true;
 		find_is_rstack_empty(child_stack->front, is_empty);
@@ -243,21 +281,12 @@ bool rstack_empty(rstack_t *rs){
 	return is_empty;
 }
 
-result_t result_new(bool is_success, uint64_t value){
-	result_t result;
-
-	result.flag = is_success;
-	result.value = value;
-
-	return result;
-}
-
 result_t find_nearest_value(node_t *node){
 	if(node == NULL) return result_new(false, 0);
 	
-	if(node->type == 0) return result_new(true, node->data.value);
+	if(isvalue(node)) return result_new(true, node->value);
 	
-	rstack_t *nested_stack = node->data.nested_stack;
+	rstack_t *nested_stack = node->nested_stack;
 	
 	result_t child_result = result_new(false, 0);
 	if(!nested_stack->is_marked){
@@ -274,14 +303,14 @@ result_t find_nearest_value(node_t *node){
 
 result_t rstack_front(rstack_t *rs){
 	if(rs == NULL){
-		errno = EINVAL; // this einval can be deleted by null result 
+		errno = EINVAL;
 		return result_new(false, 0); 
 	}
 
 	list_reset_marks(global_rstacks_list);
 	rs->is_marked = true;
 
-	result_t front_value_result = find_nearest_value(rs->front); // how to handle stack overflow
+	result_t front_value_result = find_nearest_value(rs->front);
 	if(!front_value_result.flag){
 		return result_new(false, 0);
 	}	
@@ -292,46 +321,45 @@ result_t rstack_front(rstack_t *rs){
 int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
 	if (rs1 == NULL || rs2 == NULL) {
 		errno = EINVAL;
-		return -1;
+		return RES_FAIL;
 	}
 
 	node_t *prev_front = rs1->front;
 
 	node_t *new_stack_node = node_new();
 	if(new_stack_node == NULL){
-		return -1;
+		return RES_FAIL;
 	}
 
 	rs2->general_counter++;
 	rs2->inner_counter++;
 
-	new_stack_node->data.nested_stack = rs2;
-	new_stack_node->type = 1;
+	new_stack_node->nested_stack = rs2;
 	new_stack_node->next = prev_front;
 
 	rs1->front = new_stack_node;
 
-	return 0;
+	return RES_SUCCESS;
 }
 
-// return -1 if fails, 0 if is success
 int rstack_push_value(rstack_t *rs, uint64_t value) {
 	if (rs == NULL) {
 		errno = EINVAL;
-		return -1;
+		return RES_FAIL;
 	}
+
 	node_t *value_node = node_new();
 	if(value_node == NULL){
-		return -1;
+		return RES_FAIL;
 	}
-	value_node->type = 0;
-	value_node->data.value = value;
+
+	value_node->value = value;
 
 	node_t *prev_front = rs->front;
 	value_node->next = prev_front;
 	rs->front = value_node;
 
-	return 0;
+	return RES_SUCCESS;
 }
 
 //delete all rstack value nodes 
@@ -374,8 +402,8 @@ void rstack_pop(rstack_t *rs) {
 	node_t *next_front_node = front_node->next; // if front->next == NULL its doesnt matter
 	rs->front = next_front_node;
 
-	if (front_node->type == 1) {
-		rstack_t *front_rstack = front_node->data.nested_stack;
+	if (isstack(front_node)) {
+		rstack_t *front_rstack = front_node->nested_stack;
 		
 		front_rstack->general_counter--;
 		front_rstack->inner_counter--;

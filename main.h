@@ -12,21 +12,16 @@ struct rstack {
 	bool is_marked; // for garbage collector algo (mark and sweep)
 };
 
-typedef enum {
-    WRITE_SUCCESS = 0, 
-    WRITE_ERROR = 1,   
-    WRITE_CYCLE = 2
-} write_status_t;
-
+// node can store value or stack
 typedef struct node {
-	int type; // 0 - number, 1 - stack
-
-	union {
-		uint64_t value;
-		struct rstack *nested_stack;
-	} data;
-
+	uint64_t value;
+	struct rstack *nested_stack;
 	struct node *next; // next node in current stack
 } node_t;
+
+int isvalue(node_t *node);
+int isstack(node_t *node);
+void check_is_global_list_empty_and_delete();
+void rstack_free(rstack_t *rstack);
 
 #endif

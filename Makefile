@@ -7,11 +7,11 @@ clean:
 
 example: memory_tests_compile
 	gcc $(MEMTESTFLAGS) -g main.c garbage_collector.c rstack_example.c memory_tests.o -o cts 
-# 	./cts two
+	./cts two
 	./cts three
 	./cts four
 	./cts five
-		./cts memory
+	./cts memory
 
 #compilation of memory_tests to object files
 memory_tests_compile: 
