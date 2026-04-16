@@ -1,3 +1,6 @@
+#ifndef _MAIN_H
+#define _MAIN_H
+
 #include "rstack.h"
 
 typedef struct node node_t;
@@ -8,6 +11,12 @@ struct rstack {
 	int inner_counter;
 	bool is_marked; // for garbage collector algo (mark and sweep)
 };
+
+typedef enum {
+    WRITE_SUCCESS = 0, 
+    WRITE_ERROR = 1,   
+    WRITE_CYCLE = 2
+} write_status_t;
 
 typedef struct node {
 	int type; // 0 - number, 1 - stack
@@ -20,10 +29,4 @@ typedef struct node {
 	struct node *next; // next node in current stack
 } node_t;
 
-typedef struct list {
-	node_t *head; // maybe i could create custom nodes, but its good with that nodes
-	node_t *tail;
-} list_t;
-
-void print_list(list_t *list);
-void print_stack(rstack_t *rs);
+#endif

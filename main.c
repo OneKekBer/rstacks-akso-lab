@@ -1,34 +1,27 @@
 #include "rstack.h"
+#include "garbage_collector.h"
 #include "main.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 
+static list_t *global_rstacks_list = NULL;
+
 // TODO: make linter, or some code formatter
-
-//atexit added,
-
-list_t *global_rstacks_list = NULL; // stores all stacks connected to root 
-
-void rstack_list_free_all(){
-	list_t *list = global_rstacks_list;
-	if(list == NULL) return;
-	node_t *current_node = list->head;
-	while(current_node != NULL){ 
-		node_t *next_node = current_node->next;
-		rstack_free(current_node->data.nested_stack);
-		free(current_node);
-		current_node = next_node;
-	}
-
-	free(list);
-	global_rstacks_list = NULL;
-}
 
 __attribute__((constructor))
 static void init(void) {
-    atexit(rstack_list_free_all);
+  atexit(rstack_list_free_all);
+}
+
+void check_is_global_list_empty_and_delete(){
+	if(global_rstacks_list == NULL) return;
+	if(global_rstacks_list->head == NULL){
+		free(global_rstacks_list);
+		global_rstacks_list = NULL;
+	}
 }
 
 int init_global_rstacks_list() {
@@ -66,45 +59,36 @@ rstack_t *rstack_new() {
 	
 	rstack_t *new_rstack = (rstack_t *)malloc(sizeof(rstack_t));
 	if (new_rstack == NULL) {
-		if(res == 0)
-			rstack_list_free_all();
-		
+		if(res == 0) check_is_global_list_empty_and_delete();
 		errno = ENOMEM;
 		return NULL;
 	}
 
-  new_rstack->is_marked = false;
+	new_rstack->is_marked = false;
 	new_rstack->front = NULL;
 	new_rstack->general_counter = 1;
 	new_rstack->inner_counter = 0;
 
-	//i could do this better, TODO: make it in different function
 	if(global_rstacks_list == NULL){
 		free(new_rstack);
 		errno = ENOMEM;
 		return NULL;
 	}
 	
-	node_t *new_node = node_new(); // TODO: error handling and change name like in else
-	if(new_node == NULL){
-		if(res == 0)
-			rstack_list_free_all();
-			
+	list_node_t *new_list_node = list_node_new(new_rstack);
+	if(new_list_node == NULL){
+		if(res == 0) check_is_global_list_empty_and_delete();
 		free(new_rstack);
 		errno = ENOMEM;
 		return NULL;
 	}
 
 	if(global_rstacks_list->head == NULL){
-		new_node->data.nested_stack = new_rstack;
-
-		global_rstacks_list->head = new_node;
-		global_rstacks_list->tail = new_node;
-	}else{
-		new_node->data.nested_stack = new_rstack;
-		
-		global_rstacks_list->tail->next = new_node;
-		global_rstacks_list->tail = new_node; // edited
+		global_rstacks_list->head = new_list_node;
+		global_rstacks_list->tail = new_list_node;
+	} else {
+		global_rstacks_list->tail->next = new_list_node;
+		global_rstacks_list->tail = new_list_node;
 	}
 
 	return new_rstack;
@@ -172,41 +156,6 @@ rstack_t *rstack_read(char const *path) {
 	return current_rstack;
 }
 
-//initialy reset_marks
-// bool is_rstack_cycled(rstack_t *rs){
-// 	node_t *current_node = rs->front;
-// 	rs->is_marked = true; // TODO: explain idea 
-	
-// 	while(current_node != NULL){ 
-// 		if(current_node->type == 1){
-// 			rstack_t *nested_stack = current_node->data.nested_stack;
-// 			if(nested_stack->is_marked) return true;
-
-// 			bool is_cycle = is_rstack_cycled(nested_stack);
-// 			if(is_cycle) return true;
-// 		}
-		
-// 		current_node = current_node->next;
-// 	}
-
-// 	rs->is_marked = false;
-// 	return false;
-// }
-
-void check_is_global_list_empty_and_delete(){
-	if(global_rstacks_list == NULL) return;
-	if(global_rstacks_list->head == NULL){
-		free(global_rstacks_list);
-		global_rstacks_list = NULL;
-	}
-}
-
-typedef enum {
-    WRITE_SUCCESS = 0, // Всё отлично
-    WRITE_ERROR = 1,   // Критическая ошибка (например, сломался fprintf)
-    WRITE_CYCLE = 2    // Обнаружен цикл, нужно штатно прервать запись
-} write_status_t;
-
 write_status_t write_single_node_rec(node_t *node, FILE *file) {
 	if (node == NULL) return WRITE_SUCCESS;
 
@@ -249,15 +198,12 @@ int rstack_write(char const *path, rstack_t *rs) {
 	rs->is_marked = true;
 	write_status_t status = write_single_node_rec(rs->front, file);
 
-	// Если произошла фатальная ошибка записи (сломался диск и т.д.)
 	if (status == WRITE_ERROR) {
 		fclose(file);
-		remove(path); // Удаляем недописанный мусор
+		remove(path); 
 		return -1;
 	}
 
-	// Обрати внимание: если status == WRITE_CYCLE или WRITE_SUCCESS, 
-	// мы просто идем дальше и штатно закрываем файл, возвращая 0!
 	if (fclose(file) != 0) {
 			return -1;
 	}
@@ -388,22 +334,6 @@ int rstack_push_value(rstack_t *rs, uint64_t value) {
 	return 0;
 }
 
-// is_marked = true for all rs`s child rstacks  
-void rstack_mark_childs(rstack_t *rs){
-  if(rs == NULL || rs->is_marked) return; 
-	// printf("mark child");
-  rs->is_marked = true;
-
-  node_t *current_node = rs->front;
-  while(current_node != NULL){
-    if(current_node->type == 1){ // if node contains stack
-			rstack_mark_childs(current_node->data.nested_stack);
-    }
-		
-		current_node = current_node->next;
-  }
-}
-
 //delete all rstack value nodes 
 void rstack_free(rstack_t *rs){
 	node_t *current_node = rs->front;
@@ -418,92 +348,6 @@ void rstack_free(rstack_t *rs){
 	free(rs);
 }
 
-//reset all is_marked to false
-void list_reset_marks(list_t *list){
-	if(list == NULL){
-		errno = EINVAL;
-		return;
-	}
-
-	node_t *current_node = list->head;
-	while(current_node != NULL){
-		current_node->data.nested_stack->is_marked = false;
-		current_node = current_node->next;
-	}
-}
-
-//mark is_marked = true for all root rstacks and their child
-void list_mark_phase(list_t *list){
-	node_t *current_node = list->head;	 
-
-	while(current_node != NULL){
-		rstack_t *current_rstack = current_node->data.nested_stack;
-
-		if(current_rstack->general_counter - current_rstack->inner_counter != 0){
-			rstack_mark_childs(current_rstack);
-			current_rstack->is_marked = true;
-		}
-
-		current_node = current_node->next;
-	}
-}
-
-void rstack_dec_child_counters(node_t *node){
-	if(node == NULL) return;
-	if(node->type == 1){
-		node->data.nested_stack->general_counter--;
-		node->data.nested_stack->inner_counter--;
-	}
-
-	rstack_dec_child_counters(node->next);
-}
-
-void list_sweep_phase_update_counters(list_t *list){
-	node_t *list_current_node = list->head;
-	
-	while (list_current_node != NULL){
-		node_t *list_next_node = list_current_node->next;
-		
-		rstack_t *nested_stack = list_current_node->data.nested_stack;
-		if(!nested_stack->is_marked)
-			rstack_dec_child_counters(nested_stack->front);
-	
-
-		list_current_node = list_next_node;
-	}
-}
-
-void list_sweep_phase(list_t *list){
-	node_t *current_node = list->head;
-	node_t *prev_node = NULL; // TODO: assign this node
-	node_t *next_node = NULL;
-
-	while(current_node != NULL){
-		rstack_t *current_rstack = current_node->data.nested_stack;
-		next_node = current_node->next;
-		
-		if(current_rstack->is_marked){
-			prev_node = current_node;
-		}
-	
-		if(!current_rstack->is_marked){
-			if(current_node == list->tail){
-				list->tail = prev_node;
-			}
-			if(current_node == list->head){ 
-				list->head = list->head->next; // FIXME: maybe this is not enough
-			}
-
-			if(prev_node != NULL) prev_node->next = next_node;
-			
-			rstack_free(current_rstack);
-			free(current_node);
-		}
-
-		current_node = next_node;
-	}
-}
-
 void rstack_delete(rstack_t *rs) {
 	if (rs == NULL) {
 		errno = EINVAL;
@@ -512,10 +356,7 @@ void rstack_delete(rstack_t *rs) {
 
 	rs->general_counter--;
 
-	list_reset_marks(global_rstacks_list);
-	list_mark_phase(global_rstacks_list);	
-	list_sweep_phase_update_counters(global_rstacks_list);
-	list_sweep_phase(global_rstacks_list);
+	clean(global_rstacks_list);
 	check_is_global_list_empty_and_delete();
 }
 
@@ -538,48 +379,10 @@ void rstack_pop(rstack_t *rs) {
 		
 		front_rstack->general_counter--;
 		front_rstack->inner_counter--;
-	
-		list_reset_marks(global_rstacks_list);
-		list_mark_phase(global_rstacks_list);
-		list_sweep_phase_update_counters(global_rstacks_list);
-		list_sweep_phase(global_rstacks_list);
+		
+		clean(global_rstacks_list);
 		check_is_global_list_empty_and_delete();
 	}
 
 	free(front_node);
 }
-
-// void test(){
-// 	rstack_t *s1 = rstack_new();
-// 	rstack_t *s2 = rstack_new();
-
-// 	printf("create");
-// 	rstack_push_rstack(s1, s2);
-// 	rstack_push_rstack(s1, s2);
-// 	rstack_push_rstack(s1, s2);
-// 	rstack_push_rstack(s1, s2);
-// 	rstack_push_rstack(s1, s2);
-
-// 	//free(s2);
-// 	print_list(global_rstacks_list);
-// 	print_stack(s1);
-
-// 	printf("%d\n", rstack_empty(s1)); // 1
-
-// 	rstack_push_value(s2, 5);
-// 	printf("%d", rstack_empty(s1)); // 0
-// 	printf("\n");
-// 	printf("%d", rstack_empty(s2)); // 0
-
-// }
-
-// int main() {
-// 	// test();
-// 	printf("main");
-// 	rstack_t *read = rstack_read("c/file_four.in"); 
-// 	// print_stack(read);
-// 	rstack_write("c/answer.txt", read); 
-	
-// 	return 0;
-// }
-
