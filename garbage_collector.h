@@ -14,7 +14,6 @@ typedef struct list {
 } list_t;
 
 list_node_t *list_node_new(rstack_t *rstack);
-
 void list_reset_marks(list_t *list);
 void clean(list_t *list);
 

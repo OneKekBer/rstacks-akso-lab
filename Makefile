@@ -17,7 +17,8 @@ example: memory_tests_compile
 memory_tests_compile: 
 	gcc -std=gnu2x -fPIC -c -g memory_tests.c
 
-librstack.so:
-	gcc -fPIC -shared -g main.c garbage_collector.c -o librstack.so
+format:
+	clang-format -i garbage_collector.c garbage_collector.h main.c main.h 
 
-compile: librstack.so
+compile:
+	gcc -fPIC -shared -g main.c garbage_collector.c -o librstack.so
