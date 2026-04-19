@@ -27,12 +27,18 @@ void rstack_list_free_all() {
 	free(global_rstacks_list);
 }
 
-__attribute__((constructor)) static void init(void) { atexit(rstack_list_free_all); }
+__attribute__((constructor)) static void init(void) {
+	atexit(rstack_list_free_all);
+}
 
 // isstack and isvalue are same, but I think it will be better than write smth like !isstack();
-int isstack(node_t *node) { return node->nested_stack != NULL; }
+int isstack(node_t *node) {
+	return node->nested_stack != NULL;
+}
 
-int isvalue(node_t *node) { return node->nested_stack == NULL; }
+int isvalue(node_t *node) {
+	return node->nested_stack == NULL;
+}
 
 result_t result_new(bool is_success, uint64_t value) {
 	result_t result;
@@ -46,6 +52,7 @@ result_t result_new(bool is_success, uint64_t value) {
 void check_is_global_list_empty_and_delete() {
 	if (global_rstacks_list == NULL)
 		return;
+
 	if (global_rstacks_list->head == NULL) {
 		free(global_rstacks_list);
 		global_rstacks_list = NULL;
@@ -55,6 +62,7 @@ void check_is_global_list_empty_and_delete() {
 int init_global_rstacks_list() {
 	if (global_rstacks_list != NULL)
 		return RES_FAIL;
+
 	global_rstacks_list = (list_t *)malloc((size_t)sizeof(list_t));
 
 	if (global_rstacks_list == NULL) {

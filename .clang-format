@@ -1,11 +1,55 @@
+Language: Cpp
 BasedOnStyle: LLVM
 ColumnLimit: 100
 
-# Use tabs for indentation
+# Wcięcia tabami
 UseTab: Always
-
-# A tab counts as 4 spaces
 TabWidth: 4
-
-# Indentation level also treated as 4 columns
 IndentWidth: 4
+ContinuationIndentWidth: 4
+
+# Styl nawiasów i bloków
+BreakBeforeBraces: Attach
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+
+# Funkcje i deklaracje
+BinPackParameters: false
+BinPackArguments: false
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+
+# Spacje
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpaceInEmptyParentheses: false
+SpacesInCStyleCastParentheses: false
+SpaceBeforeAssignmentOperators: true
+
+# Pointery/referencje
+PointerAlignment: Right
+
+# Includes
+SortIncludes: true
+IncludeBlocks: Preserve
+
+# Switch / case
+IndentCaseLabels: true
+IndentCaseBlocks: true
+
+# Komentarze
+ReflowComments: true
+
+# Puste linie
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+
+# Czystsze formatowanie długich wyrażeń
+BreakBeforeBinaryOperators: NonAssignment
+PenaltyBreakBeforeFirstCallParameter: 19
+
+# Standard
+Standard: Latest
